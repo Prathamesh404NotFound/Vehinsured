@@ -1,0 +1,6 @@
+{
+  "name": "AI Vehicle Damage Assessment & Claim Assistance",
+  "description": "Academic engineering application for AI-based vehicle damage assessment, OCR document processing, repair cost estimation, and multilingual insurance claim assistance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

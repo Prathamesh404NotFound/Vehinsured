@@ -1,0 +1,67 @@
+{
+  "rules": {
+    "profiles": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['email', 'updatedAt']) && !newData.hasChild('role')"
+      }
+    },
+    "vehicles": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "policies": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "claims": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('appConfig').child('adminUids').child(auth.uid).val() === true)",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "assessments": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('appConfig').child('adminUids').child(auth.uid).val() === true)",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "documents": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('appConfig').child('adminUids').child(auth.uid).val() === true)",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "reportMetadata": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "adminReviews": {
+      "$claimId": {
+        ".read": "auth != null",
+        ".write": "auth != null && root.child('appConfig').child('adminUids').child(auth.uid).val() === true"
+      }
+    },
+    "referenceCosts": {
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('appConfig').child('adminUids').child(auth.uid).val() === true"
+    },
+    "activityLogs": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "appConfig": {
+      ".read": true,
+      ".write": "auth != null && root.child('appConfig').child('adminUids').child(auth.uid).val() === true"
+    }
+  }
+}
