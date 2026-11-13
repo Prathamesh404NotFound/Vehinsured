@@ -27,13 +27,13 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const t = (key: string, fallback?: string): string => {
-    const langDict = translations[language];
+    const langDict = translations[language] as Record<string, string>;
     if (langDict && langDict[key]) {
       return langDict[key];
     }
-    // Fallback to English
-    if (translations['en'][key]) {
-      return translations['en'][key];
+    const enDict = translations['en'] as Record<string, string>;
+    if (enDict[key]) {
+      return enDict[key];
     }
     return fallback || key;
   };

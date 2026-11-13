@@ -1,4 +1,4 @@
-import { ref, get, set, remove, push, child, onValue, off } from 'firebase/database';
+import { ref, get, set, remove } from 'firebase/database';
 import { rtdb, isFirebaseConfigured } from '../firebase/config';
 import {
   UserProfile,
@@ -9,11 +9,11 @@ import {
   DocumentItem,
   AdminReview,
   CostReferenceItem,
-  ActivityLogItem
+  CostReferenceRevision,
+  ActivityLogItem,
 } from '../../types';
 import { DEFAULT_COST_REFERENCES } from '../cost-estimation/calculator';
 
-// Helper for local storage key generation when offline/demo
 function getLocalKey(path: string): string {
   return 'rtdb_mock_' + path.replace(/\//g, '_');
 }
@@ -32,13 +32,8 @@ function writeLocalStorage<T>(path: string, data: T): void {
     localStorage.setItem(getLocalKey(path), JSON.stringify(data));
   } catch (e) {
     console.warn('LocalStorage write error:', e);
+    throw new Error('Browser storage quota exceeded while saving locally. Export your records to prevent data loss.');
   }
-}
-
-function deleteLocalStorage(path: string): void {
-  try {
-    localStorage.removeItem(getLocalKey(path));
-  } catch {}
 }
 
 // ---------------- USER PROFILES ----------------
@@ -62,8 +57,7 @@ export async function dbGetVehicles(uid: string): Promise<Vehicle[]> {
   if (isFirebaseConfigured && rtdb) {
     const snapshot = await get(ref(rtdb, `vehicles/${uid}`));
     if (!snapshot.exists()) return [];
-    const val = snapshot.val();
-    return Object.values(val) as Vehicle[];
+    return Object.values(snapshot.val()) as Vehicle[];
   }
   const localMap = readLocalStorage<Record<string, Vehicle>>(`vehicles_${uid}`) || {};
   return Object.values(localMap);
@@ -107,15 +101,24 @@ export async function dbSavePolicy(uid: string, policy: InsurancePolicy): Promis
   writeLocalStorage(`policies_${uid}`, localMap);
 }
 
-// ---------------- CLAIMS / CASSETTE ----------------
+export async function dbDeletePolicy(uid: string, policyId: string): Promise<void> {
+  if (isFirebaseConfigured && rtdb) {
+    await remove(ref(rtdb, `policies/${uid}/${policyId}`));
+  }
+  const localMap = readLocalStorage<Record<string, InsurancePolicy>>(`policies_${uid}`) || {};
+  delete localMap[policyId];
+  writeLocalStorage(`policies_${uid}`, localMap);
+}
+
+// ---------------- CLAIMS ----------------
 export async function dbGetClaims(uid: string): Promise<ClaimAssistanceCase[]> {
   if (isFirebaseConfigured && rtdb) {
     const snapshot = await get(ref(rtdb, `claims/${uid}`));
     if (!snapshot.exists()) return [];
-    return Object.values(snapshot.val()) as ClaimAssistanceCase[];
+    return (Object.values(snapshot.val()) as ClaimAssistanceCase[]).sort((a, b) => b.updatedAt - a.updatedAt);
   }
   const localMap = readLocalStorage<Record<string, ClaimAssistanceCase>>(`claims_${uid}`) || {};
-  return Object.values(localMap);
+  return (Object.values(localMap) as ClaimAssistanceCase[]).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function dbGetClaimById(uid: string, claimId: string): Promise<ClaimAssistanceCase | null> {
@@ -184,6 +187,15 @@ export async function dbSaveDocument(uid: string, doc: DocumentItem): Promise<vo
   writeLocalStorage(`documents_${uid}`, localMap);
 }
 
+export async function dbDeleteDocument(uid: string, docId: string): Promise<void> {
+  if (isFirebaseConfigured && rtdb) {
+    await remove(ref(rtdb, `documents/${uid}/${docId}`));
+  }
+  const localMap = readLocalStorage<Record<string, DocumentItem>>(`documents_${uid}`) || {};
+  delete localMap[docId];
+  writeLocalStorage(`documents_${uid}`, localMap);
+}
+
 // ---------------- ADMIN REVIEWS ----------------
 export async function dbGetAdminReview(claimId: string): Promise<AdminReview | null> {
   if (isFirebaseConfigured && rtdb) {
@@ -200,6 +212,27 @@ export async function dbSaveAdminReview(review: AdminReview): Promise<void> {
   writeLocalStorage(`adminReviews_${review.claimId}`, review);
 }
 
+export async function dbGetAllAdminReviews(): Promise<AdminReview[]> {
+  if (isFirebaseConfigured && rtdb) {
+    const snapshot = await get(ref(rtdb, 'adminReviews'));
+    if (!snapshot.exists()) return [];
+    return Object.values(snapshot.val()) as AdminReview[];
+  }
+  const reviews: AdminReview[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('rtdb_mock_adminReviews_')) {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        try {
+          reviews.push(JSON.parse(raw));
+        } catch {}
+      }
+    }
+  }
+  return reviews.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
 export async function dbGetAllSubmittedClaimsForAdmin(): Promise<{ uid: string; claim: ClaimAssistanceCase }[]> {
   if (isFirebaseConfigured && rtdb) {
     const snapshot = await get(ref(rtdb, 'claims'));
@@ -212,10 +245,9 @@ export async function dbGetAllSubmittedClaimsForAdmin(): Promise<{ uid: string; 
         result.push({ uid, claim: c as ClaimAssistanceCase });
       });
     });
-    return result;
+    return result.sort((a, b) => b.claim.updatedAt - a.claim.updatedAt);
   }
 
-  // Fallback scan local storage keys
   const result: { uid: string; claim: ClaimAssistanceCase }[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
@@ -227,10 +259,10 @@ export async function dbGetAllSubmittedClaimsForAdmin(): Promise<{ uid: string; 
       });
     }
   }
-  return result;
+  return result.sort((a, b) => b.claim.updatedAt - a.claim.updatedAt);
 }
 
-// ---------------- REFERENCE COSTS ----------------
+// ---------------- REFERENCE COSTS & REVISIONS ----------------
 export async function dbGetReferenceCosts(): Promise<CostReferenceItem[]> {
   if (isFirebaseConfigured && rtdb) {
     const snapshot = await get(ref(rtdb, 'referenceCosts'));
@@ -242,7 +274,10 @@ export async function dbGetReferenceCosts(): Promise<CostReferenceItem[]> {
   return localRef || DEFAULT_COST_REFERENCES;
 }
 
-export async function dbSaveReferenceCostItem(item: CostReferenceItem): Promise<void> {
+export async function dbSaveReferenceCostItem(
+  item: CostReferenceItem,
+  previous?: CostReferenceItem
+): Promise<void> {
   if (isFirebaseConfigured && rtdb) {
     await set(ref(rtdb, `referenceCosts/${item.id}`), item);
   }
@@ -254,6 +289,46 @@ export async function dbSaveReferenceCostItem(item: CostReferenceItem): Promise<
     current.push(item);
   }
   writeLocalStorage('referenceCosts', current);
+
+  // Record revision history
+  const rev: CostReferenceRevision = {
+    id: 'rev-' + Date.now(),
+    itemId: item.id,
+    partName: item.partName,
+    previousValues: previous
+      ? {
+          repairLaborMin: previous.repairLaborMin,
+          repairLaborMax: previous.repairLaborMax,
+          replacePartsMin: previous.replacePartsMin,
+          replacePartsMax: previous.replacePartsMax,
+        }
+      : {},
+    newValues: {
+      repairLaborMin: item.repairLaborMin,
+      repairLaborMax: item.repairLaborMax,
+      replacePartsMin: item.replacePartsMin,
+      replacePartsMax: item.replacePartsMax,
+    },
+    updatedBy: item.updatedBy,
+    timestamp: Date.now(),
+  };
+
+  if (isFirebaseConfigured && rtdb) {
+    await set(ref(rtdb, `referenceCostRevisions/${rev.id}`), rev);
+  }
+  const revs = readLocalStorage<CostReferenceRevision[]>('referenceCostRevisions') || [];
+  revs.unshift(rev);
+  writeLocalStorage('referenceCostRevisions', revs.slice(0, 50));
+}
+
+export async function dbGetReferenceCostRevisions(): Promise<CostReferenceRevision[]> {
+  if (isFirebaseConfigured && rtdb) {
+    const snapshot = await get(ref(rtdb, 'referenceCostRevisions'));
+    if (snapshot.exists()) {
+      return (Object.values(snapshot.val()) as CostReferenceRevision[]).sort((a, b) => b.timestamp - a.timestamp);
+    }
+  }
+  return readLocalStorage<CostReferenceRevision[]>('referenceCostRevisions') || [];
 }
 
 // ---------------- ACTIVITY LOGS ----------------
@@ -261,17 +336,17 @@ export async function dbGetActivityLogs(uid: string): Promise<ActivityLogItem[]>
   if (isFirebaseConfigured && rtdb) {
     const snapshot = await get(ref(rtdb, `activityLogs/${uid}`));
     if (!snapshot.exists()) return [];
-    return Object.values(snapshot.val()) as ActivityLogItem[];
+    return (Object.values(snapshot.val()) as ActivityLogItem[]).sort((a, b) => b.timestamp - a.timestamp);
   }
   return readLocalStorage<ActivityLogItem[]>(`activityLogs_${uid}`) || [];
 }
 
-export async function dbAddActivityLog(uid: string, item: Omit<ActivityLogItem, 'id' | 'timestamp'>): Promise<void> {
+export async function dbAddActivityLog(uid: string, item: Omit<ActivityLogItem, 'id' | 'timestamp' | 'uid'>): Promise<void> {
   const log: ActivityLogItem = {
     ...item,
     id: 'log-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
     uid,
-    timestamp: Date.now()
+    timestamp: Date.now(),
   };
 
   if (isFirebaseConfigured && rtdb) {
@@ -280,4 +355,26 @@ export async function dbAddActivityLog(uid: string, item: Omit<ActivityLogItem, 
   const current = readLocalStorage<ActivityLogItem[]>(`activityLogs_${uid}`) || [];
   current.unshift(log);
   writeLocalStorage(`activityLogs_${uid}`, current.slice(0, 50));
+}
+
+// ---------------- EXPLICIT USER DATA CLEANUP ----------------
+export async function dbDeleteAllUserRecords(uid: string): Promise<{ completedNodes: string[]; errors: string[] }> {
+  const nodes = ['profiles', 'vehicles', 'policies', 'claims', 'assessments', 'documents', 'activityLogs'];
+  const completedNodes: string[] = [];
+  const errors: string[] = [];
+
+  for (const node of nodes) {
+    try {
+      if (isFirebaseConfigured && rtdb) {
+        await remove(ref(rtdb, `${node}/${uid}`));
+      }
+      localStorage.removeItem(getLocalKey(`${node}_${uid}`));
+      localStorage.removeItem(getLocalKey(`${node}/${uid}`));
+      completedNodes.push(node);
+    } catch (err: any) {
+      errors.push(`${node}: ${err?.message || 'failed'}`);
+    }
+  }
+
+  return { completedNodes, errors };
 }

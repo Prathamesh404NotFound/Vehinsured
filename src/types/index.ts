@@ -55,6 +55,7 @@ export interface EvidenceImage {
   id: string;
   caption: string;
   previewBase64: string; // Compressed <200KB preview stored in RTDB
+  sizeKb?: number;
   hasLocalOriginal: boolean; // Flag indicating high-res original in IndexedDB
   originalKey?: string;
   createdAt: number;
@@ -71,19 +72,22 @@ export interface DamagedRegion {
   bbox?: [number, number, number, number]; // [x, y, width, height] normalized
   userDescription?: string;
   isUserAddedOrCorrected?: boolean;
+  isIllustrativeDemo?: boolean;
 }
 
 export interface DamageAssessment {
   id: string;
   claimId: string;
   uid: string;
-  inferenceMethod: 'onnx_local' | 'gemini_vision' | 'manual_user';
-  modelIdentifier: string; // e.g. "YOLOv8-Vehicle-Damage-v1" or "Gemini-Vision" or "Manual-Assessment"
+  inferenceMethod: 'onnx_local' | 'gemini_vision' | 'manual_user' | 'illustrative_demo';
+  modelIdentifier: string;
   status: 'completed' | 'model_unavailable' | 'failed' | 'manual_only';
   statusMessage?: string;
+  summaryAnalysis?: string;
   regions: DamagedRegion[];
   isVehicleDrivableAccordingToUser: boolean;
   safetyNoticeRequired: boolean;
+  isDemoData?: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -92,21 +96,37 @@ export interface DocumentItem {
   id: string;
   uid: string;
   claimId?: string;
-  category: 'rc' | 'insurance_policy' | 'driving_licence' | 'fir' | 'repair_estimate' | 'invoice' | 'death_certificate' | 'relationship_proof' | 'other';
+  category:
+    | 'rc'
+    | 'insurance_policy'
+    | 'driving_licence'
+    | 'fir'
+    | 'repair_estimate'
+    | 'invoice'
+    | 'death_certificate'
+    | 'relationship_proof'
+    | 'other';
   fileName: string;
   fileType: string;
   fileSize: number;
   previewBase64?: string;
+  rawText?: string;
   extractedFields: Record<string, string>;
   isConfirmedByUser: boolean;
   confidenceScore?: number;
+  hasLocalOriginal?: boolean;
+  originalKey?: string;
   uploadedAt: number;
+}
+
+export interface ClaimChecklistProgress {
+  [itemId: string]: 'available' | 'pending' | 'not_applicable';
 }
 
 export interface ClaimAssistanceCase {
   id: string;
   uid: string;
-  caseReference: string; // e.g. "CLAIM-202610-8492"
+  caseReference: string;
   vehicleId: string;
   policyId?: string;
   incidentDate: string;
@@ -118,8 +138,9 @@ export interface ClaimAssistanceCase {
   isDrivable: boolean;
   policeFirReference?: string;
   witnessNotes?: string;
+  additionalNotes?: string;
   evidenceList: EvidenceImage[];
-  isDeceasedCase: boolean; // Nominee / Legal Heir Workflow
+  isDeceasedCase: boolean;
   nomineeDetails?: {
     policyholderName: string;
     relationshipToPolicyholder: string;
@@ -127,10 +148,19 @@ export interface ClaimAssistanceCase {
     contactNumber?: string;
     insurerContacted: boolean;
   };
-  status: 'draft' | 'ready_for_submission' | 'submitted_for_review' | 'under_review' | 'more_info_required' | 'review_complete' | 'closed';
+  checklistProgress?: ClaimChecklistProgress;
+  status:
+    | 'draft'
+    | 'ready_for_submission'
+    | 'submitted_for_review'
+    | 'under_review'
+    | 'more_info_required'
+    | 'review_complete'
+    | 'closed';
   assessmentId?: string;
   documentIds: string[];
   currentWizardStep: number;
+  isDemoData?: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -145,8 +175,19 @@ export interface CostReferenceItem {
   replacePartsMax: number;
   paintingAllowanceMin: number;
   paintingAllowanceMax: number;
+  notes?: string;
   lastUpdated: number;
   updatedBy: string;
+}
+
+export interface CostReferenceRevision {
+  id: string;
+  itemId: string;
+  partName: string;
+  previousValues: Partial<CostReferenceItem>;
+  newValues: Partial<CostReferenceItem>;
+  updatedBy: string;
+  timestamp: number;
 }
 
 export interface ComponentEstimate {

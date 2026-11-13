@@ -38,7 +38,7 @@ export const SignInPage: React.FC = () => {
 
   const handleQuickDemo = (role: 'customer' | 'admin') => {
     startDemoSession(role);
-    navigate('/dashboard');
+    navigate(role === 'admin' ? '/admin' : '/dashboard');
   };
 
   return (

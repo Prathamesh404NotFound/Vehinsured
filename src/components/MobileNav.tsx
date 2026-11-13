@@ -12,15 +12,15 @@ export const MobileNav: React.FC = () => {
   if (!currentUser) return null;
 
   const navItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: Home },
-    { path: '/vehicles', label: 'Vehicles', icon: Car },
-    { path: '/claim-wizard', label: 'New Report', icon: PlusCircle, isHighlight: true },
-    { path: '/document-scanner', label: 'Scanner', icon: Scan },
-    { path: '/profile', label: 'Profile', icon: User },
+    { path: '/dashboard', label: t('nav.dashboard'), icon: Home },
+    { path: '/vehicles', label: t('nav.myVehicles'), icon: Car },
+    { path: '/claim-wizard', label: t('nav.newReport'), icon: PlusCircle, isHighlight: true },
+    { path: '/document-scanner', label: t('nav.documentScanner'), icon: Scan },
+    { path: '/profile', label: t('nav.profile'), icon: User },
   ];
 
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200 shadow-lg px-2 py-1.5 flex items-center justify-around">
+    <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200 shadow-lg px-2 py-1.5 flex items-center justify-around no-print">
       {navItems.map((item) => {
         const Icon = item.icon;
         const isActive = location.pathname === item.path;

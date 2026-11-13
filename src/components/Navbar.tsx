@@ -21,7 +21,7 @@ export const Navbar: React.FC = () => {
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-slate-900 text-white shadow-md border-b border-slate-800">
+    <header className="sticky top-0 z-40 bg-slate-900 text-white shadow-md border-b border-slate-800 no-print">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Brand Logo & Name */}
         <Link to="/" className="flex items-center gap-2.5 font-bold text-lg tracking-tight hover:opacity-90 transition-opacity">
@@ -35,7 +35,7 @@ export const Navbar: React.FC = () => {
         </Link>
 
         {/* Desktop Navigation Links */}
-        <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-300">
+        <nav className="hidden md:flex items-center gap-4 lg:gap-5 text-xs lg:text-sm font-medium text-slate-300 whitespace-nowrap">
           <Link to="/" className="hover:text-white transition-colors">{t('nav.home')}</Link>
           <Link to="/how-it-works" className="hover:text-white transition-colors">{t('nav.howItWorks')}</Link>
           <Link to="/features" className="hover:text-white transition-colors">{t('nav.features')}</Link>
@@ -47,7 +47,7 @@ export const Navbar: React.FC = () => {
               <Link to="/nominee-assistance" className="hover:text-white transition-colors text-amber-300">{t('nav.nomineeAssistance')}</Link>
               {isAdmin && (
                 <Link to="/admin" className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300 font-semibold px-2 py-1 bg-emerald-950/60 border border-emerald-800 rounded-md">
-                  <Shield className="w-3.5 h-3.5" />
+                  <Shield className="w-3.5 h-3.5 shrink-0" />
                   <span>Admin</span>
                 </Link>
               )}

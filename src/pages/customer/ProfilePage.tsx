@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { User, Save, Globe } from 'lucide-react';
+import { Save, Globe } from 'lucide-react';
 import { useAuth } from '../../features/auth/AuthContext';
 import { useTranslation } from '../../features/i18n/context';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { ToastBanner } from '../../components/ui/ToastBanner';
 import { SupportedLanguage } from '../../types';
 
 export const ProfilePage: React.FC = () => {
@@ -18,10 +19,9 @@ export const ProfilePage: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    await updateProfileData({ displayName: name, phone });
+    await updateProfileData({ displayName: name.trim(), phone: phone.trim() });
     setSaving(false);
     setSuccess(true);
-    setTimeout(() => setSuccess(false), 3000);
   };
 
   return (
@@ -33,9 +33,11 @@ export const ProfilePage: React.FC = () => {
 
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6">
         {success && (
-          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-semibold">
-            Profile settings updated successfully!
-          </div>
+          <ToastBanner
+            type="success"
+            message="Profile settings and language preference updated."
+            onClose={() => setSuccess(false)}
+          />
         )}
 
         <form onSubmit={handleSave} className="space-y-4">
@@ -46,12 +48,7 @@ export const ProfilePage: React.FC = () => {
             helperText="Email is managed via authentication session."
           />
 
-          <Input
-            label="Full Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
+          <Input label="Full Name" value={name} onChange={(e) => setName(e.target.value)} required />
 
           <Input
             label="Mobile Phone (Optional)"
@@ -82,7 +79,7 @@ export const ProfilePage: React.FC = () => {
 
           <Button type="submit" isLoading={saving} className="gap-2">
             <Save className="w-4 h-4" />
-            <span>Save Profile</span>
+            <span>{t('btn.save')}</span>
           </Button>
         </form>
       </div>

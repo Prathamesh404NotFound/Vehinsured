@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Activity } from 'lucide-react';
+import { Activity, Bell } from 'lucide-react';
 import { useAuth } from '../../features/auth/AuthContext';
 import { dbGetActivityLogs } from '../../services/database';
 import { ActivityLogItem } from '../../types';
+import { useTranslation } from '../../features/i18n/context';
 
 export const NotificationsPage: React.FC = () => {
   const { currentUser } = useAuth();
+  const { t } = useTranslation();
   const [logs, setLogs] = useState<ActivityLogItem[]>([]);
 
   useEffect(() => {
@@ -20,13 +22,16 @@ export const NotificationsPage: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="border-b border-slate-200 pb-4">
-        <h1 className="text-2xl font-extrabold text-slate-900">Activity History & Notifications</h1>
-        <p className="text-xs text-slate-600">Audit timeline of vehicle changes, assessment report drafts, and reviewer updates.</p>
+        <h1 className="text-2xl font-extrabold text-slate-900">{t('nav.notifications')}</h1>
+        <p className="text-xs text-slate-600">Audit timeline of vehicle changes, assessment drafts, and reviewer updates.</p>
       </div>
 
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
         {logs.length === 0 ? (
-          <div className="text-center py-8 text-xs text-slate-500">No activity logs recorded yet.</div>
+          <div className="text-center py-8 space-y-2 text-xs text-slate-500">
+            <Bell className="w-8 h-8 text-slate-300 mx-auto" />
+            <p>No activity logs recorded yet.</p>
+          </div>
         ) : (
           <div className="divide-y divide-slate-100">
             {logs.map((log) => (

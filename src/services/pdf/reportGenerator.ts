@@ -1,11 +1,12 @@
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 import {
   ClaimAssistanceCase,
   Vehicle,
   InsurancePolicy,
   DamageAssessment,
   CostEstimateResult,
-  AdminReview
+  AdminReview,
+  DocumentItem,
 } from '../../types';
 
 export interface ReportDataBundle {
@@ -15,6 +16,21 @@ export interface ReportDataBundle {
   assessment?: DamageAssessment | null;
   costEstimate?: CostEstimateResult | null;
   adminReview?: AdminReview | null;
+  confirmedDocuments?: DocumentItem[];
+}
+
+/**
+ * Standard jsPDF built-in Helvetica only supports Latin-1 glyphs.
+ * If Devanagari characters exist in user notes, note them safely without corrupting glyphs.
+ */
+function sanitizePdfText(text?: string): string {
+  if (!text) return '';
+  const hasNonLatin = /[^\u0000-\u00FF]/.test(text);
+  if (!hasNonLatin) return text;
+  const asciiOnly = text.replace(/[^\u0020-\u007E]/g, '').trim();
+  return asciiOnly
+    ? `${asciiOnly} [Note: Non-Latin script preserved in JSON/Print view]`
+    : '[Devanagari/Unicode text recorded — view in browser Print View or JSON export for exact script rendering]';
 }
 
 export function generateAssessmentPdfReport(bundle: ReportDataBundle): jsPDF {
@@ -24,201 +40,311 @@ export function generateAssessmentPdfReport(bundle: ReportDataBundle): jsPDF {
     format: 'a4',
   });
 
-  const { claim, vehicle, policy, assessment, costEstimate, adminReview } = bundle;
+  const { claim, vehicle, policy, assessment, costEstimate, adminReview, confirmedDocuments } = bundle;
 
-  // Primary palette styling
-  const primaryNavy = [15, 23, 42]; // #0f172a
-  const accentBlue = [37, 99, 235]; // #2563eb
-  const textDark = [51, 65, 85];    // #334155
-  const lightGrey = [241, 245, 249]; // #f1f5f9
+  const primaryNavy: [number, number, number] = [15, 23, 42];
+  const textDark: [number, number, number] = [51, 65, 85];
+  const lightGrey: [number, number, number] = [241, 245, 249];
 
   let y = 15;
 
-  // Header Banner
-  doc.setFillColor(primaryNavy[0], primaryNavy[1], primaryNavy[2]);
-  doc.rect(0, 0, 210, 28, 'F');
+  const ensureSpace = (neededMm: number) => {
+    if (y + neededMm > 272) {
+      doc.addPage();
+      y = 18;
+    }
+  };
 
+  // Header Banner
+  doc.setFillColor(...primaryNavy);
+  doc.rect(0, 0, 210, 28, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.text('AI VEHICLE DAMAGE ASSESSMENT & CLAIM ASSISTANCE REPORT', 12, 12);
-
+  doc.setFontSize(13);
+  doc.text('PRELIMINARY VEHICLE DAMAGE & CLAIM ASSISTANCE REPORT', 12, 12);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text(`Reference No: ${claim.caseReference}  |  Generated: ${new Date().toLocaleString()}`, 12, 20);
-
-  y = 35;
-
-  // Mandatory Disclaimer
-  doc.setFillColor(254, 243, 199); // Light amber
-  doc.rect(12, y, 186, 12, 'F');
-  doc.setTextColor(146, 64, 14);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
+  doc.setFontSize(8.5);
   doc.text(
-    'PRELIMINARY ASSESSMENT REPORT — NOT AN OFFICIAL INSURANCE SURVEY, REPAIR QUOTATION, OR APPROVAL GUARANTEE',
-    15,
-    y + 7
+    `Case Ref: ${claim.caseReference}  |  Generated: ${new Date().toLocaleString()}  |  Status: ${claim.status.replace(/_/g, ' ').toUpperCase()}`,
+    12,
+    20
   );
 
-  y += 18;
+  y = 34;
+
+  // Mandatory Disclaimer Box
+  doc.setFillColor(254, 243, 199);
+  doc.rect(12, y, 186, 13, 'F');
+  doc.setTextColor(146, 64, 14);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.text(
+    'Preliminary assessment and claim-assistance report. Not an official insurance survey, repair quotation, or guarantee of claim approval.',
+    14,
+    y + 8,
+    { maxWidth: 182 }
+  );
+
+  y += 19;
 
   // Section 1: Vehicle & Policy Details
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(primaryNavy[0], primaryNavy[1], primaryNavy[2]);
-  doc.text('1. Vehicle & Insurance Policy Information', 12, y);
-  y += 4;
-  doc.setDrawColor(226, 232, 240);
+  doc.setFontSize(10.5);
+  doc.setTextColor(...primaryNavy);
+  doc.text('1. Vehicle & Insurance Policy Details', 12, y);
+  y += 3;
+  doc.setDrawColor(203, 213, 225);
   doc.line(12, y, 198, y);
   y += 6;
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+  doc.setTextColor(...textDark);
 
-  doc.text(`Vehicle Reg No: ${vehicle?.displayRegistrationNumber || vehicle?.registrationNumber || 'N/A'}`, 14, y);
-  doc.text(`Make & Model: ${vehicle?.make || 'N/A'} ${vehicle?.model || ''}`, 110, y);
+  doc.text(`Registration: ${vehicle?.displayRegistrationNumber || vehicle?.registrationNumber || 'N/A'}`, 14, y);
+  doc.text(`Make & Model: ${sanitizePdfText(vehicle?.make)} ${sanitizePdfText(vehicle?.model)}`, 108, y);
   y += 5;
   doc.text(`Category: ${vehicle?.category?.toUpperCase() || 'HATCHBACK'}`, 14, y);
-  doc.text(`Manufacturing Year: ${vehicle?.manufacturingYear || 'N/A'}`, 110, y);
+  doc.text(`Year: ${vehicle?.manufacturingYear || 'N/A'}`, 108, y);
   y += 5;
-  doc.text(`Insurer: ${policy?.insurerName || 'Not Linked'}`, 14, y);
-  doc.text(`Policy No: ${policy?.policyNumber || 'Not Linked'}`, 110, y);
-  y += 8;
+  doc.text(`Insurer: ${sanitizePdfText(policy?.insurerName) || 'Not Linked'}`, 14, y);
+  doc.text(`Policy No: ${sanitizePdfText(policy?.policyNumber) || 'Not Linked'}`, 108, y);
+  y += 5;
+  doc.text(
+    `Policy Source: ${policy?.isVerifiedByAdmin ? 'Reviewer Checked' : policy?.isExtractedByOcr ? 'OCR Prefilled (User Confirmed)' : 'User Entered'}`,
+    14,
+    y
+  );
+  y += 9;
 
-  // Section 2: Accident Summary
+  // Section 2: Accident Incident Summary
+  ensureSpace(35);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(primaryNavy[0], primaryNavy[1], primaryNavy[2]);
-  doc.text('2. Accident Incident Details', 12, y);
-  y += 4;
+  doc.setFontSize(10.5);
+  doc.setTextColor(...primaryNavy);
+  doc.text('2. Accident Incident Summary', 12, y);
+  y += 3;
   doc.line(12, y, 198, y);
   y += 6;
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-  doc.text(`Date & Time: ${claim.incidentDate} at ${claim.incidentTime}`, 14, y);
-  doc.text(`Location: ${claim.location}`, 110, y);
+  doc.setTextColor(...textDark);
+  doc.text(`Date & Time: ${claim.incidentDate} ${claim.incidentTime}`, 14, y);
+  doc.text(`Drivable (User Reported): ${claim.isDrivable ? 'Yes' : 'No (Inspection advised)'}`, 108, y);
   y += 5;
-  doc.text(`Incident Type: ${claim.typeOfIncident.replace('_', ' ').toUpperCase()}`, 14, y);
-  doc.text(`Vehicle Drivable: ${claim.isDrivable ? 'Yes' : 'No (Roadside inspection advised)'}`, 110, y);
+  doc.text(`Location: ${sanitizePdfText(claim.location) || 'Not specified'}`, 14, y);
+  doc.text(`Incident Type: ${claim.typeOfIncident.replace(/_/g, ' ').toUpperCase()}`, 108, y);
   y += 5;
-  doc.text(`FIR / Police Ref: ${claim.policeFirReference || 'None recorded'}`, 14, y);
-  y += 5;
-  doc.text(`Incident Description: ${claim.description.substring(0, 120)}${claim.description.length > 120 ? '...' : ''}`, 14, y);
-  y += 10;
+  doc.text(`Other Vehicle Involved: ${claim.otherVehicleInvolved ? 'Yes' : 'No'}`, 14, y);
+  doc.text(`Police FIR Ref: ${sanitizePdfText(claim.policeFirReference) || 'None recorded'}`, 108, y);
+  y += 6;
+
+  const descLines = doc.splitTextToSize(`Description: ${sanitizePdfText(claim.description) || 'None provided'}`, 182);
+  ensureSpace(descLines.length * 4.5 + 4);
+  doc.text(descLines, 14, y);
+  y += descLines.length * 4.5 + 6;
 
   // Section 3: Damage Assessment Findings
+  ensureSpace(28);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(primaryNavy[0], primaryNavy[1], primaryNavy[2]);
+  doc.setFontSize(10.5);
+  doc.setTextColor(...primaryNavy);
   doc.text('3. Damage Assessment Findings', 12, y);
-  y += 4;
+  y += 3;
   doc.line(12, y, 198, y);
   y += 6;
 
+  const sourceLabel =
+    assessment?.inferenceMethod === 'gemini_vision'
+      ? 'AI Vision (Gemini 4 Argon)'
+      : assessment?.inferenceMethod === 'onnx_local'
+      ? 'Local ONNX Computer Vision'
+      : assessment?.inferenceMethod === 'illustrative_demo'
+      ? 'Example assessment — illustrative data, not generated by the AI model'
+      : 'User Manual Observation';
+
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text(`Assessment Method: ${assessment?.inferenceMethod === 'gemini_vision' ? 'AI Vision (Gemini 4 Argon)' : assessment?.inferenceMethod === 'onnx_local' ? 'Local ONNX Computer Vision' : 'User Manual Observation'}`, 14, y);
-  doc.text(`Model Identifier: ${assessment?.modelIdentifier || 'Manual Observation'}`, 110, y);
-  y += 7;
+  doc.setFontSize(8.5);
+  doc.text(`Source Method: ${sourceLabel}`, 14, y);
+  y += 6;
 
   if (assessment?.regions && assessment.regions.length > 0) {
     doc.setFont('helvetica', 'bold');
-    doc.setFillColor(lightGrey[0], lightGrey[1], lightGrey[2]);
+    doc.setFillColor(...lightGrey);
     doc.rect(12, y, 186, 6, 'F');
-    doc.text('Part Name', 15, y + 4);
-    doc.text('Damage Type', 65, y + 4);
-    doc.text('Severity', 115, y + 4);
-    doc.text('Confidence / Source', 155, y + 4);
+    doc.text('Component', 14, y + 4);
+    doc.text('Damage Type', 64, y + 4);
+    doc.text('Severity', 105, y + 4);
+    doc.text('Origin / Confidence', 145, y + 4);
     y += 8;
 
     doc.setFont('helvetica', 'normal');
     assessment.regions.forEach((region) => {
-      if (y > 260) {
-        doc.addPage();
-        y = 20;
-      }
-      doc.text(region.partName, 15, y);
-      doc.text(region.damageType.toUpperCase(), 65, y);
-      doc.text(region.severity.toUpperCase(), 115, y);
-      doc.text(
-        region.confidence !== undefined
-          ? `${Math.round(region.confidence * 100)}% (AI)`
-          : region.isUserAddedOrCorrected
-          ? 'User Corrected'
-          : 'Manual',
-        155,
-        y
-      );
-      y += 5;
+      ensureSpace(7);
+      doc.text(sanitizePdfText(region.partName), 14, y);
+      doc.text(region.damageType.toUpperCase(), 64, y);
+      doc.text(region.severity.replace(/_/g, ' ').toUpperCase(), 105, y);
+      const originText = region.isIllustrativeDemo
+        ? 'Illustrative Demo'
+        : region.confidence !== undefined
+        ? `${Math.round(region.confidence * 100)}% (AI)`
+        : 'User Reported';
+      doc.text(originText, 145, y);
+      y += 5.5;
     });
   } else {
-    doc.text('No specific damage components recorded.', 14, y);
-    y += 5;
+    doc.text('No damaged components recorded.', 14, y);
+    y += 6;
   }
 
-  y += 6;
+  y += 5;
 
-  // Section 4: Cost Estimates
+  // Section 4: Evidence Thumbnails
+  if (claim.evidenceList && claim.evidenceList.length > 0) {
+    ensureSpace(45);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10.5);
+    doc.setTextColor(...primaryNavy);
+    doc.text(`4. Uploaded Evidence Photographs (${claim.evidenceList.length})`, 12, y);
+    y += 3;
+    doc.line(12, y, 198, y);
+    y += 6;
+
+    let x = 14;
+    for (let i = 0; i < claim.evidenceList.length; i++) {
+      const ev = claim.evidenceList[i];
+      if (x > 150) {
+        x = 14;
+        y += 36;
+      }
+      ensureSpace(36);
+      try {
+        if (ev.previewBase64 && ev.previewBase64.startsWith('data:image/')) {
+          doc.addImage(ev.previewBase64, 'JPEG', x, y, 42, 28);
+        }
+      } catch {
+        doc.rect(x, y, 42, 28);
+      }
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.text(sanitizePdfText(ev.caption).slice(0, 28), x, y + 32);
+      x += 46;
+    }
+    y += 40;
+  }
+
+  // Section 5: Cost Estimate
   if (costEstimate) {
-    if (y > 240) {
-      doc.addPage();
-      y = 20;
-    }
+    ensureSpace(32);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.setTextColor(primaryNavy[0], primaryNavy[1], primaryNavy[2]);
-    doc.text('4. Indicative Repair Cost Estimates', 12, y);
-    y += 4;
+    doc.setFontSize(10.5);
+    doc.setTextColor(...primaryNavy);
+    doc.text('5. Indicative Repair Cost Range', 12, y);
+    y += 3;
     doc.line(12, y, 198, y);
     y += 6;
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-    doc.text(`Estimated Range: Rs. ${costEstimate.totalMin.toLocaleString('en-IN')} - Rs. ${costEstimate.totalMax.toLocaleString('en-IN')}`, 14, y);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(...textDark);
+    doc.text(
+      `Estimated Range: Rs. ${costEstimate.totalMin.toLocaleString('en-IN')} - Rs. ${costEstimate.totalMax.toLocaleString('en-IN')}`,
+      14,
+      y
+    );
     y += 5;
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
-    doc.text(`Based on regional reference table ${costEstimate.referenceTableVersion} (${costEstimate.vehicleCategory.toUpperCase()} vehicle baseline).`, 14, y);
-    y += 8;
+    const discLines = doc.splitTextToSize(costEstimate.disclaimer, 182);
+    doc.text(discLines, 14, y);
+    y += discLines.length * 4 + 5;
   }
 
-  // Section 5: Nominee Guidance (If applicable)
-  if (claim.isDeceasedCase && claim.nomineeDetails) {
-    if (y > 240) {
-      doc.addPage();
-      y = 20;
-    }
+  // Section 6: Confirmed OCR Documents
+  if (confirmedDocuments && confirmedDocuments.length > 0) {
+    ensureSpace(25);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.setTextColor(185, 28, 28); // Muted red header
-    doc.text('5. Nominee & Legal-Heir Special Guidance', 12, y);
-    y += 4;
+    doc.setFontSize(10.5);
+    doc.setTextColor(...primaryNavy);
+    doc.text('6. User-Confirmed Document Scans', 12, y);
+    y += 3;
     doc.line(12, y, 198, y);
     y += 6;
-
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-    doc.text(`Deceased Policyholder: ${claim.nomineeDetails.policyholderName}`, 14, y);
-    doc.text(`Applicant Relationship: ${claim.nomineeDetails.relationshipToPolicyholder}`, 110, y);
+    doc.setFontSize(8);
+    confirmedDocuments.forEach((d) => {
+      ensureSpace(6);
+      const summary = Object.entries(d.extractedFields)
+        .filter(([, v]) => Boolean(v))
+        .map(([k, v]) => `${k}: ${sanitizePdfText(v)}`)
+        .join(' | ');
+      const lines = doc.splitTextToSize(`${d.category.toUpperCase()}: ${summary}`, 182);
+      doc.text(lines, 14, y);
+      y += lines.length * 4 + 2;
+    });
+    y += 4;
+  }
+
+  // Section 7: Nominee / Deceased Policyholder Guidance
+  if (claim.isDeceasedCase && claim.nomineeDetails) {
+    ensureSpace(28);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10.5);
+    doc.setTextColor(185, 28, 28);
+    doc.text('7. Nominee & Legal-Heir Claim Guidance', 12, y);
+    y += 3;
+    doc.line(12, y, 198, y);
+    y += 6;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...textDark);
+    doc.text(`Policyholder: ${sanitizePdfText(claim.nomineeDetails.policyholderName)}`, 14, y);
+    doc.text(`Applicant: ${sanitizePdfText(claim.nomineeDetails.applicantName)} (${claim.nomineeDetails.relationshipToPolicyholder})`, 105, y);
     y += 5;
-    doc.text('Required Checklist: Death Certificate, Relationship Proof, Insurer Nominee Claim Form, Bank Mandate.', 14, y);
+    doc.text(
+      'Checklist: Death Certificate, Relationship/Succession Proof, RC, Policy, NEFT Mandate. Confirm exact procedure with insurer.',
+      14,
+      y,
+      { maxWidth: 182 }
+    );
     y += 8;
   }
 
-  // Footer Disclaimer
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(7);
-  doc.setTextColor(100, 116, 139);
-  doc.text(
-    'This report is generated locally by the AI-Based Vehicle Damage Assessment application for academic engineering evaluation. All estimates are indicative.',
-    12,
-    285
-  );
+  // Section 8: Internal Reviewer Notes
+  if (adminReview) {
+    ensureSpace(22);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10.5);
+    doc.setTextColor(...primaryNavy);
+    doc.text('8. Internal Application Review Status', 12, y);
+    y += 3;
+    doc.line(12, y, 198, y);
+    y += 6;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.text(`Reviewer Status: ${adminReview.status.replace(/_/g, ' ').toUpperCase()}`, 14, y);
+    y += 5;
+    if (adminReview.reviewerNotes) {
+      const noteLines = doc.splitTextToSize(`Reviewer Comment: ${sanitizePdfText(adminReview.reviewerNotes)}`, 182);
+      doc.text(noteLines, 14, y);
+      y += noteLines.length * 4 + 4;
+    }
+  }
+
+  // Page numbers & footer on every page
+  const pageCount = doc.getNumberOfPages();
+  for (let p = 1; p <= pageCount; p++) {
+    doc.setPage(p);
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text(
+      `Preliminary report — Not an official insurer survey or approval | Page ${p} of ${pageCount}`,
+      12,
+      287
+    );
+  }
 
   return doc;
 }

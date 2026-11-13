@@ -1,7 +1,8 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './features/auth/AuthContext';
 import { LanguageProvider } from './features/i18n/context';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 import { MainLayout } from './layouts/MainLayout';
 import { AppLayout } from './layouts/AppLayout';
@@ -41,57 +42,62 @@ import { PrivacyExportPage } from './pages/customer/PrivacyExportPage';
 import { AdminOverviewPage } from './pages/admin/AdminOverviewPage';
 import { CaseDetailsPage } from './pages/admin/CaseDetailsPage';
 import { ReferenceCostsAdminPage } from './pages/admin/ReferenceCostsAdminPage';
+import { AuditLogAdminPage } from './pages/admin/AuditLogAdminPage';
 import { UserManagementAdminPage } from './pages/admin/UserManagementAdminPage';
 
 export default function App() {
   return (
-    <AuthProvider>
-      <LanguageProvider>
-        <BrowserRouter>
-          <Routes>
-            {/* Public Layout */}
-            <Route element={<MainLayout />}>
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/how-it-works" element={<HowItWorksPage />} />
-              <Route path="/features" element={<FeaturesPage />} />
-              <Route path="/faq" element={<FaqPage />} />
-              <Route path="/privacy" element={<PrivacyPage />} />
-              <Route path="/terms" element={<TermsPage />} />
-              <Route path="/signin" element={<SignInPage />} />
-              <Route path="/signup" element={<SignUpPage />} />
-              <Route path="/reset-password" element={<ResetPasswordPage />} />
-            </Route>
+    <ErrorBoundary>
+      <AuthProvider>
+        <LanguageProvider>
+          <BrowserRouter>
+            <Routes>
+              {/* Public Layout */}
+              <Route element={<MainLayout />}>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/how-it-works" element={<HowItWorksPage />} />
+                <Route path="/features" element={<FeaturesPage />} />
+                <Route path="/faq" element={<FaqPage />} />
+                <Route path="/privacy" element={<PrivacyPage />} />
+                <Route path="/terms" element={<TermsPage />} />
+                <Route path="/signin" element={<SignInPage />} />
+                <Route path="/signup" element={<SignUpPage />} />
+                <Route path="/reset-password" element={<ResetPasswordPage />} />
+              </Route>
 
-            {/* Authenticated Customer & Admin Layout */}
-            <Route element={<AppLayout />}>
-              <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/vehicles" element={<MyVehiclesPage />} />
-              <Route path="/vehicles/add" element={<AddEditVehiclePage />} />
-              <Route path="/policies" element={<MyPoliciesPage />} />
-              <Route path="/claim-wizard" element={<ClaimWizardPage />} />
-              <Route path="/damage-assessment" element={<DamageAssessmentPage />} />
-              <Route path="/cost-estimator" element={<RepairCostEstimatePage />} />
-              <Route path="/document-scanner" element={<DocumentScannerPage />} />
-              <Route path="/nominee-assistance" element={<NomineeAssistancePage />} />
-              <Route path="/claim-checklist" element={<ClaimChecklistPage />} />
-              <Route path="/report-preview" element={<ReportPreviewPage />} />
-              <Route path="/reports" element={<MyReportsPage />} />
-              <Route path="/notifications" element={<NotificationsPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-              <Route path="/privacy-export" element={<PrivacyExportPage />} />
+              {/* Authenticated Customer & Admin Layout */}
+              <Route element={<AppLayout />}>
+                <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/vehicles" element={<MyVehiclesPage />} />
+                <Route path="/vehicles/add" element={<AddEditVehiclePage />} />
+                <Route path="/vehicles/edit/:id" element={<AddEditVehiclePage />} />
+                <Route path="/policies" element={<MyPoliciesPage />} />
+                <Route path="/claim-wizard" element={<ClaimWizardPage />} />
+                <Route path="/damage-assessment" element={<DamageAssessmentPage />} />
+                <Route path="/cost-estimator" element={<RepairCostEstimatePage />} />
+                <Route path="/document-scanner" element={<DocumentScannerPage />} />
+                <Route path="/nominee-assistance" element={<NomineeAssistancePage />} />
+                <Route path="/claim-checklist" element={<ClaimChecklistPage />} />
+                <Route path="/report-preview" element={<ReportPreviewPage />} />
+                <Route path="/reports" element={<MyReportsPage />} />
+                <Route path="/notifications" element={<NotificationsPage />} />
+                <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/privacy-export" element={<PrivacyExportPage />} />
 
-              {/* Admin Routes */}
-              <Route path="/admin" element={<AdminOverviewPage />} />
-              <Route path="/admin/case" element={<CaseDetailsPage />} />
-              <Route path="/admin/reference-costs" element={<ReferenceCostsAdminPage />} />
-              <Route path="/admin/users" element={<UserManagementAdminPage />} />
-            </Route>
+                {/* Admin Routes */}
+                <Route path="/admin" element={<AdminOverviewPage />} />
+                <Route path="/admin/case" element={<CaseDetailsPage />} />
+                <Route path="/admin/reference-costs" element={<ReferenceCostsAdminPage />} />
+                <Route path="/admin/audit-log" element={<AuditLogAdminPage />} />
+                <Route path="/admin/users" element={<UserManagementAdminPage />} />
+              </Route>
 
-            {/* 404 Catch-All */}
-            <Route path="*" element={<NotFoundPage />} />
-          </Routes>
-        </BrowserRouter>
-      </LanguageProvider>
-    </AuthProvider>
+              {/* 404 Catch-All */}
+              <Route path="*" element={<NotFoundPage />} />
+            </Routes>
+          </BrowserRouter>
+        </LanguageProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

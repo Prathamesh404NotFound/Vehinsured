@@ -1,15 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { FileText, FileDown, ArrowLeft, ShieldAlert } from 'lucide-react';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
+import { FileDown, ArrowLeft, Printer, MessageSquare, ShieldAlert, FileJson, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../features/auth/AuthContext';
-import { dbGetClaimById, dbGetVehicles, dbGetPolicies, dbGetAssessmentById } from '../../services/database';
-import { ClaimAssistanceCase, Vehicle, InsurancePolicy, DamageAssessment } from '../../types';
+import {
+  dbGetClaimById,
+  dbGetVehicles,
+  dbGetPolicies,
+  dbGetAssessmentById,
+  dbGetAdminReview,
+  dbGetDocuments,
+  dbGetReferenceCosts,
+} from '../../services/database';
+import {
+  ClaimAssistanceCase,
+  Vehicle,
+  InsurancePolicy,
+  DamageAssessment,
+  AdminReview,
+  DocumentItem,
+  CostReferenceItem,
+} from '../../types';
 import { Button } from '../../components/ui/Button';
-import { calculateRepairEstimate } from '../../services/cost-estimation/calculator';
+import { StatusBadge } from '../../components/ui/StatusBadge';
+import { calculateRepairEstimate, DEFAULT_COST_REFERENCES } from '../../services/cost-estimation/calculator';
 import { generateAssessmentPdfReport, exportBundleAsJson } from '../../services/pdf/reportGenerator';
+import { useTranslation } from '../../features/i18n/context';
 
 export const ReportPreviewPage: React.FC = () => {
   const { currentUser } = useAuth();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const claimId = searchParams.get('id');
@@ -18,21 +37,33 @@ export const ReportPreviewPage: React.FC = () => {
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [policy, setPolicy] = useState<InsurancePolicy | null>(null);
   const [assessment, setAssessment] = useState<DamageAssessment | null>(null);
+  const [adminReview, setAdminReview] = useState<AdminReview | null>(null);
+  const [confirmedDocs, setConfirmedDocs] = useState<DocumentItem[]>([]);
+  const [refCosts, setRefCosts] = useState<CostReferenceItem[]>(DEFAULT_COST_REFERENCES);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!currentUser || !claimId) return;
+    if (!currentUser || !claimId) {
+      setLoading(false);
+      return;
+    }
     async function load() {
       setLoading(true);
       const c = await dbGetClaimById(currentUser!.uid, claimId!);
       if (c) {
         setClaim(c);
-        const [vList, pList] = await Promise.all([
+        const [vList, pList, rev, docs, costs] = await Promise.all([
           dbGetVehicles(currentUser!.uid),
           dbGetPolicies(currentUser!.uid),
+          dbGetAdminReview(c.id),
+          dbGetDocuments(currentUser!.uid),
+          dbGetReferenceCosts(),
         ]);
         setVehicle(vList.find((v) => v.id === c.vehicleId) || null);
         setPolicy(pList.find((p) => p.id === c.policyId) || null);
+        setAdminReview(rev);
+        setConfirmedDocs(docs.filter((d) => d.isConfirmedByUser && (!c.documentIds?.length || c.documentIds.includes(d.id) || d.claimId === c.id)));
+        setRefCosts(costs);
 
         if (c.assessmentId) {
           const ass = await dbGetAssessmentById(currentUser!.uid, c.assessmentId);
@@ -52,12 +83,14 @@ export const ReportPreviewPage: React.FC = () => {
     return (
       <div className="text-center py-12 space-y-3">
         <p className="text-sm font-medium text-slate-700">Claim Report record not found.</p>
-        <Button size="sm" onClick={() => navigate('/dashboard')}>Return to Dashboard</Button>
+        <Button size="sm" onClick={() => navigate('/dashboard')}>
+          Return to Dashboard
+        </Button>
       </div>
     );
   }
 
-  const costEst = calculateRepairEstimate(assessment?.regions || [], vehicle?.category || 'hatchback');
+  const costEst = calculateRepairEstimate(assessment?.regions || [], vehicle?.category || 'hatchback', refCosts);
 
   const handleDownloadPdf = () => {
     const doc = generateAssessmentPdfReport({
@@ -66,6 +99,8 @@ export const ReportPreviewPage: React.FC = () => {
       policy,
       assessment,
       costEstimate: costEst,
+      adminReview,
+      confirmedDocuments: confirmedDocs,
     });
     doc.save(`${claim.caseReference}_Report.pdf`);
   };
@@ -77,6 +112,8 @@ export const ReportPreviewPage: React.FC = () => {
       policy,
       assessment,
       costEstimate: costEst,
+      adminReview,
+      confirmedDocuments: confirmedDocs,
     });
     const blob = new Blob([jsonStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -84,66 +121,163 @@ export const ReportPreviewPage: React.FC = () => {
     a.href = url;
     a.download = `${claim.caseReference}_Export.json`;
     a.click();
+    URL.revokeObjectURL(url);
   };
+
+  const sourceLabel =
+    assessment?.inferenceMethod === 'gemini_vision'
+      ? 'AI Vision (Gemini 4 Argon)'
+      : assessment?.inferenceMethod === 'onnx_local'
+      ? 'Local Browser ONNX Model'
+      : assessment?.inferenceMethod === 'illustrative_demo'
+      ? 'Example assessment — illustrative data, not generated by the AI model.'
+      : 'User Manual Observation';
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4 no-print">
         <div className="flex items-center gap-2">
-          <button onClick={() => navigate('/dashboard')} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600">
+          <button
+            type="button"
+            onClick={() => navigate('/reports')}
+            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer"
+          >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <span className="text-[10px] font-bold text-blue-700 uppercase">Ref: {claim.caseReference}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold text-blue-700 uppercase">Ref: {claim.caseReference}</span>
+              <StatusBadge status={claim.status} />
+            </div>
             <h1 className="text-2xl font-extrabold text-slate-900">Damage Assessment Report</h1>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleDownloadJson}>
-            Export JSON
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-1.5">
+            <Printer className="w-4 h-4" />
+            <span>{t('btn.printView')}</span>
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleDownloadJson} className="gap-1.5">
+            <FileJson className="w-4 h-4" />
+            <span>{t('btn.downloadJson')}</span>
           </Button>
           <Button size="sm" onClick={handleDownloadPdf} className="gap-1.5">
             <FileDown className="w-4 h-4" />
-            <span>Download PDF</span>
+            <span>{t('btn.downloadPdf')}</span>
           </Button>
         </div>
       </div>
 
+      {/* Reviewer Clarification Banner */}
+      {adminReview && (
+        <div
+          className={`p-4 rounded-xl border text-xs space-y-1.5 ${
+            claim.status === 'more_info_required'
+              ? 'bg-red-50 border-red-200 text-red-900'
+              : 'bg-blue-50 border-blue-200 text-blue-900'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-bold flex items-center gap-1.5">
+              <MessageSquare className="w-4 h-4" />
+              <span>Reviewer Update ({adminReview.status.replace(/_/g, ' ').toUpperCase()})</span>
+            </span>
+            {claim.status === 'more_info_required' && (
+              <Link to={`/claim-wizard?id=${claim.id}`} className="underline font-bold no-print">
+                Edit & Respond
+              </Link>
+            )}
+          </div>
+          {adminReview.reviewerNotes && <p><strong>Reviewer Note:</strong> {adminReview.reviewerNotes}</p>}
+          {adminReview.requestedCustomerClarification && (
+            <p><strong>Clarification Requested:</strong> {adminReview.requestedCustomerClarification}</p>
+          )}
+        </div>
+      )}
+
       {/* Report Paper Preview Container */}
-      <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6 text-sm text-slate-800">
+      <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6 text-sm text-slate-800 print:shadow-none print:border-0">
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-900 text-xs font-semibold text-center">
-          PRELIMINARY ASSESSMENT REPORT — NOT AN OFFICIAL INSURANCE SURVEY OR GUARANTEE OF APPROVAL
+          PRELIMINARY ASSESSMENT AND CLAIM-ASSISTANCE REPORT — NOT AN OFFICIAL INSURANCE SURVEY, REPAIR QUOTATION, OR GUARANTEE OF APPROVAL
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-b border-slate-100 pb-4">
-          <div>
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Vehicle Details</h3>
-            <p className="font-bold text-slate-900 text-base">{vehicle?.make} {vehicle?.model}</p>
-            <p className="text-xs text-slate-600">Reg No: {vehicle?.displayRegistrationNumber || vehicle?.registrationNumber}</p>
-            <p className="text-xs text-slate-600">Category: {vehicle?.category.toUpperCase()}</p>
+          <div className="space-y-1">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">1. Vehicle & Policy Details</h3>
+            <p className="font-bold text-slate-900 text-base">
+              {vehicle ? `${vehicle.make} ${vehicle.model}` : 'Vehicle Not Linked'}
+            </p>
+            <p className="text-xs text-slate-600">
+              Reg No: {vehicle?.displayRegistrationNumber || vehicle?.registrationNumber || 'N/A'}
+            </p>
+            <p className="text-xs text-slate-600">Category: {vehicle?.category.toUpperCase() || 'HATCHBACK'}</p>
+            <p className="text-xs text-slate-600">
+              Policy: {policy ? `${policy.insurerName} (${policy.policyNumber})` : 'Not Linked'}
+            </p>
           </div>
 
-          <div>
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Incident Info</h3>
-            <p className="text-xs text-slate-700"><strong>Date:</strong> {claim.incidentDate} at {claim.incidentTime}</p>
-            <p className="text-xs text-slate-700"><strong>Location:</strong> {claim.location}</p>
-            <p className="text-xs text-slate-700"><strong>Incident Type:</strong> {claim.typeOfIncident.replace('_', ' ').toUpperCase()}</p>
+          <div className="space-y-1">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">2. Incident Info</h3>
+            <p className="text-xs text-slate-700">
+              <strong>Date & Time:</strong> {claim.incidentDate} at {claim.incidentTime}
+            </p>
+            <p className="text-xs text-slate-700">
+              <strong>Location:</strong> {claim.location || 'Not specified'}
+            </p>
+            <p className="text-xs text-slate-700">
+              <strong>Incident Type:</strong> {claim.typeOfIncident.replace(/_/g, ' ').toUpperCase()}
+            </p>
+            <p className="text-xs text-slate-700">
+              <strong>Drivable (Reported):</strong> {claim.isDrivable ? 'Yes' : 'No (Inspection/Towing advised)'}
+            </p>
+            {claim.policeFirReference && (
+              <p className="text-xs text-slate-700">
+                <strong>Police FIR Ref:</strong> {claim.policeFirReference}
+              </p>
+            )}
           </div>
         </div>
 
-        <div>
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Damage Observations</h3>
+        {claim.description && (
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700">
+            <strong>Incident Summary:</strong> {claim.description}
+          </div>
+        )}
+
+        {!claim.isDrivable && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-900 flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-red-600 shrink-0" />
+            <span>Safety Advisory: Vehicle marked non-drivable; arrange towing and mechanical inspection before driving.</span>
+          </div>
+        )}
+
+        {/* Damage Findings */}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">3. Damage Observations</h3>
+            <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded bg-slate-100 text-slate-700">
+              {sourceLabel}
+            </span>
+          </div>
           {assessment?.regions && assessment.regions.length > 0 ? (
             <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden text-xs">
               {assessment.regions.map((r, i) => (
-                <div key={i} className="p-3 flex justify-between items-center bg-slate-50">
+                <div key={i} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50">
                   <div>
                     <span className="font-bold text-slate-900">{r.partName}</span>
-                    <span className="text-slate-500 ml-2">({r.damageType})</span>
+                    <span className="text-slate-500 ml-2">({r.damageType.toUpperCase()})</span>
+                    <span className="ml-2 text-[10px] px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600">
+                      {r.isIllustrativeDemo
+                        ? 'Illustrative Demo'
+                        : r.confidence !== undefined
+                        ? `AI ${Math.round(r.confidence * 100)}%`
+                        : 'User Reported'}
+                    </span>
+                    {r.userDescription && <p className="text-[11px] text-slate-500 mt-0.5">{r.userDescription}</p>}
                   </div>
-                  <span className="font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded text-[10px]">
-                    {r.severity.toUpperCase()}
+                  <span className="font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded text-[10px] self-start sm:self-center">
+                    {r.severity.replace(/_/g, ' ').toUpperCase()}
                   </span>
                 </div>
               ))}
@@ -153,13 +287,65 @@ export const ReportPreviewPage: React.FC = () => {
           )}
         </div>
 
-        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
-          <span className="text-xs font-bold text-slate-700 uppercase">Estimated Repair Range</span>
+        {/* Evidence Thumbnails */}
+        {claim.evidenceList && claim.evidenceList.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+              4. Evidence Photographs ({claim.evidenceList.length})
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {claim.evidenceList.map((ev) => (
+                <div key={ev.id} className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50">
+                  <img src={ev.previewBase64} alt={ev.caption} className="w-full h-32 object-cover" />
+                  <div className="p-2 text-[11px] text-slate-700 truncate bg-white border-t border-slate-100">
+                    {ev.caption}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Repair Cost Estimate */}
+        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+          <h3 className="text-xs font-bold text-slate-700 uppercase">5. Indicative Repair Range</h3>
           <p className="text-xl font-extrabold text-slate-900">
             Rs. {costEst.totalMin.toLocaleString('en-IN')} &mdash; Rs. {costEst.totalMax.toLocaleString('en-IN')}
           </p>
           <p className="text-[11px] text-slate-500">{costEst.disclaimer}</p>
         </div>
+
+        {/* Confirmed OCR Documents */}
+        {confirmedDocs.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">6. User-Confirmed Documents</h3>
+            <div className="space-y-1.5">
+              {confirmedDocs.map((d) => (
+                <div key={d.id} className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <div>
+                    <span className="font-bold text-slate-800">{d.category.replace(/_/g, ' ').toUpperCase()}:</span>{' '}
+                    <span className="text-slate-600">{d.fileName}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Nominee Details */}
+        {claim.isDeceasedCase && claim.nomineeDetails && (
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1">
+            <h3 className="font-bold text-amber-900 uppercase">7. Nominee & Legal-Heir Claim Details</h3>
+            <p>
+              <strong>Policyholder:</strong> {claim.nomineeDetails.policyholderName} &bull;{' '}
+              <strong>Applicant:</strong> {claim.nomineeDetails.applicantName} ({claim.nomineeDetails.relationshipToPolicyholder})
+            </p>
+            <p className="text-amber-800">
+              Prepared for insurer nominee processing. Final claim eligibility and succession verification rest with the insurer.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
